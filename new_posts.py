@@ -9,8 +9,16 @@ from dotenv import load_dotenv, find_dotenv
 from requests.auth import HTTPBasicAuth
 
 
+loglevel = logging.DEBUG
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+log.setLevel(loglevel)
+
+logging.basicConfig(
+    format="%(asctime)s %(levelname)-8s %(message)s",
+    level=loglevel,
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logging.captureWarnings(True)
 
 # load .env file
 load_dotenv(find_dotenv())
