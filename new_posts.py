@@ -21,7 +21,6 @@ import time
 from pprint import pformat
 from datetime import datetime, timedelta
 from dotenv import load_dotenv, find_dotenv
-from distutils.util import strtobool
 from requests.auth import HTTPBasicAuth
 from docopt import docopt
 
