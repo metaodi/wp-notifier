@@ -1,3 +1,4 @@
+docopts
 python-dotenv
 requests
 PyMsTeamsAdaptiveCard

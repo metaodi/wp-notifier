@@ -28,7 +28,7 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Run the script
-      run: python new_posts.py
+      run: python new_posts.py --verbose
       env:
            WP_BASE_URL:  ${{ secrets.WP_BASE_URL }}
            WP_USER:  ${{ secrets.WP_USER }}

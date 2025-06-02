@@ -1,15 +1,39 @@
+"""Send a notification message to Microsoft Teams
+
+Usage:
+  new_posts.py [--dry-run] [--verbose]
+  new_posts.py (-h | --help)
+  new_posts.py --version
+
+Options:
+  -h, --help                    Show this screen.
+  --version                     Show version.
+  -d, --dry-run                 Only a dry run, no MS Teams notifications are sent.
+  --verbose                     Option to enable more verbose output.
+"""
+
 import logging
 import os
 import pyadaptivecard
 import requests
 import sys
 import time
+from pprint import pformat
 from datetime import datetime, timedelta
 from dotenv import load_dotenv, find_dotenv
+from distutils.util import strtobool
 from requests.auth import HTTPBasicAuth
+from docopt import docopt
 
 
-loglevel = logging.DEBUG
+arguments = docopt(
+    __doc__, version="Send a notification message to Microsoft Teams for new posts 1.0"
+)
+
+loglevel = logging.INFO
+if arguments["--verbose"]:
+    loglevel = logging.DEBUG
+
 log = logging.getLogger(__name__)
 log.setLevel(loglevel)
 
@@ -29,27 +53,43 @@ username = os.environ["WP_USER"]
 application_password = os.environ["WP_APPLICATION_PASSWORD"]
 team_webhook_url = os.environ["MS_TEAMS_WEBHOOK_URL"]
 
+# HTTP session
+auth = HTTPBasicAuth(username, application_password)
+session = requests.Session()
+session.auth = auth
 
-def fetch_latest_posts(site_url, username, password):
+
+def wp_api_call(url, params):
+    # Make the request to the WordPress REST API
+    log.debug(f"{url=}, {params=}")
+    try:
+        response = session.get(url, params=params)
+        response.raise_for_status()
+        result = response.json()
+        return result
+    except requests.RequestException:
+        log.exception(f"Failed to fetch from {url}")
+        return None
+
+
+def fetch_author(site_url, id):
+    # Endpoint for fetching users by id
+    endpoint = f'{site_url}/wp-json/wp/v2/users/{id}'
+
+    return wp_api_call(endpoint, params={})
+
+
+def fetch_latest_posts(site_url):
     # Endpoint for fetching the latest posts
     endpoint = f'{site_url}/wp-json/wp/v2/posts'
-    auth = HTTPBasicAuth(username, application_password)
+
     yesterday = (datetime.now() - timedelta(days=1))
     params = {
         "status[]": ["publish", "future", "draft", "pending", "private"],
-        "modified_after": yesterday.isoformat()
+        "modified_after": yesterday.isoformat(),
     }
 
-    # Make the request to the WordPress REST API
-    try:
-        response = requests.get(endpoint, params=params, auth=auth)
-        response.raise_for_status()
-
-        posts = response.json()
-        return posts
-    except requests.RequestException:
-        log.exception(f"Failed to fetch posts from {site_url}")
-        return []
+    return wp_api_call(endpoint, params)
 
 
 def create_teams_notification(team_webhook_url, site_url, post):
@@ -61,6 +101,7 @@ def create_teams_notification(team_webhook_url, site_url, post):
     section = pyadaptivecard.CardSection()
     card.addSection(section)
 
+    section.addFact("Autor", post['author'])
     section.addFact("Datum", datetime.fromisoformat(post['date']).strftime("%d.%m.%Y %H:%M"))
     section.addFact("Modified", datetime.fromisoformat(post['modified']).strftime("%d.%m.%Y %H:%M"))
     section.addFact("Link", f"[{post['link']}]({post['link']})")
@@ -71,15 +112,28 @@ def create_teams_notification(team_webhook_url, site_url, post):
 
 
 try:
-    posts = fetch_latest_posts(site_url, username, application_password)
+    posts = fetch_latest_posts(site_url)
     for post in posts:
-        log.debug(f"Title: {post['title']['rendered']}")
-        log.debug(f"Date: {post['date']}, Modified: {post['modified']}")
+        author = fetch_author(site_url, post["author"])["name"]
+
+        log.info(f"Title: {post['title']['rendered']}")
+        log.info(f"Author: {author}")
+        log.info(f"Date: {post['date']}, Modified: {post['modified']}")
         log.debug(f"Link: {post['link']}")
         log.debug(f"Status: {post['status']}\n")
+        log.debug(f"Dry Run: {arguments['--dry-run']}\n")
+
+        post["author"] = author
 
         msg = create_teams_notification(team_webhook_url, site_url, post)
-        msg.printme()
+        if arguments["--verbose"]:
+            log.debug(f"Message: {pformat(msg.to_json(), depth=8)}")
+
+        if arguments["--dry-run"]:
+            log.debug("Only a dry run, do not send message, continue...")
+            continue
+
+        log.debug("Sending message...")
         msg.send()
         time.sleep(5)
 except Exception:
